@@ -1,71 +1,74 @@
-import puppeteer from "puppeteer";
+import puppeteer from "puppeteer-extra";
+import StealthPlugin from "puppeteer-extra-plugin-stealth";
 import fs from "fs";
+import readline from "readline";
 
-(async function openWebPage() {
-    const URL = "https://listado.mercadolibre.com.ar/mesa-boogie#D[A:mesa%20boogie]";
+// Activar modo stealth
+puppeteer.use(StealthPlugin());
 
-    const browser = await puppeteer.launch({
-        headless: false,
-        slowMo: 500,
-    });
-    const page = await browser.newPage();
+// Crear función que espera input desde consola
+const askQuestion = (query) => {
+  const rl = readline.createInterface({
+    input: process.stdin,
+    output: process.stdout,
+  });
 
-    await page.goto(URL, {
-        waitUntil: "networkidle2",
-    });
+  return new Promise(resolve => rl.question(query, answer => {
+    rl.close();
+    resolve(answer);
+  }));
+};
 
-    const title = await page.title();
-    console.log(`Page title is: ${title}`);
+(async () => {
+  // Preguntar término de búsqueda
+  const searchTerm = await askQuestion("🔎 ¿Qué querés buscar en MercadoLibre?: ");
+  const query = encodeURIComponent(searchTerm.trim());
+  const URL = `https://listado.mercadolibre.com.ar/${query}`;
 
-    let products = [];
-    let nextPage = true;
+  console.log(`🔗 Buscando: ${URL}`);
 
-    while (nextPage) {
-        try {
-            await page.waitForSelector(".ui-search-layout__item", { timeout: 10000 });
-        } catch (e) {
-            console.error("❌ No se encontraron productos en esta página.");
-            break;
-        }
+  const browser = await puppeteer.launch({
+    headless: false,
+    slowMo: 50,
+    args: ["--no-sandbox", "--disable-setuid-sandbox"],
+  });
 
-        const newProducts = await page.evaluate(() => {
-            const cards = Array.from(document.querySelectorAll(".ui-search-layout__item"));
+  const page = await browser.newPage();
+  await page.goto(URL, { waitUntil: "networkidle2" });
 
-            return cards.map(card => {
-                const title = card.querySelector("h2.ui-search-item__title")?.innerText?.trim();
-                const price = card.querySelector(".andes-money-amount__fraction")?.innerText?.trim();
-                const link = card.querySelector("a")?.href;
+  await new Promise(resolve => setTimeout(resolve, 5000));
 
-                if (!title || !price || !link) return null;
+  const cantidad = await page.evaluate(() => {
+    return document.querySelectorAll("ol.ui-search-layout li").length;
+  });
+  console.log("🧪 Productos encontrados en el DOM:", cantidad);
 
-                return { title, price, link };
-            }).filter(item => item !== null);
-        });
+  const products = await page.evaluate(() => {
+    const items = Array.from(document.querySelectorAll("ol.ui-search-layout li"));
 
-        products = [...products, ...newProducts];
+    return items.map(item => {
+      const title = item.querySelector(".poly-component__title")?.innerText?.trim() || "Sin título";
+      const price = item.querySelector(".andes-money-amount__fraction")?.innerText?.trim() || "Sin precio";
+      const link = item.querySelector("a")?.href || "Sin link";
 
-        // Manejo de la paginación
-        nextPage = await page.evaluate(() => {
-            const nextButton = document.querySelector(".andes-pagination__button--next");
-            if (nextButton && !nextButton.classList.contains("andes-pagination__button--disabled")) {
-                nextButton.click();
-                return true;
-            }
-            return false;
-        });
+      return { title, price, link };
+    }).filter(p => p.title !== "Sin título");
+  });
 
-        if (nextPage) {
-            await new Promise(resolve => setTimeout(resolve, 3000));
-            // Esperar por si es SPA
-        }
-    }
+  console.log(`✅ Productos encontrados: ${products.length}`);
+  console.log(products);
 
-    console.log(`Total products found: ${products.length}`);
-    console.log(products);
+  const dir = "./json";
+  if (!fs.existsSync(dir)) {
+    fs.mkdirSync(dir, { recursive: true });
+  }
 
-    // Guardar en archivo JSON
-    fs.writeFileSync("productos.json", JSON.stringify(products, null, 2), "utf-8");
-    console.log("✅ Archivo 'productos.json' guardado correctamente.");
+  const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
+  const safeTerm = searchTerm.replace(/\s+/g, "_");
+  const filename = `${dir}/productos-${safeTerm}-${timestamp}.json`;
 
-    await browser.close();
+  fs.writeFileSync(filename, JSON.stringify(products, null, 2), "utf-8");
+  console.log(`📄 Archivo guardado en: ${filename}`);
+
+  await browser.close();
 })();

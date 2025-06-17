@@ -28,7 +28,7 @@ const askQuestion = (query) => {
   console.log(`🔗 Buscando: ${URL}`);
 
   const browser = await puppeteer.launch({
-    headless: false,
+    headless: 'new',
     slowMo: 50,
     args: ["--no-sandbox", "--disable-setuid-sandbox"],
   });

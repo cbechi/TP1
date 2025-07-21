@@ -16,8 +16,10 @@ pipeline {
 
         stage('Construir imagen Docker') {
             steps {
+ script {
+            docker.withTool('docker') {
                 sh "docker build -t ${DOCKERHUB_USER}/${IMAGE_NAME}:${VERSION} ."
-            }
+            }            }
         }
 
         stage('Eliminar contenedor anterior si existe') {

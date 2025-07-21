@@ -16,40 +16,55 @@ pipeline {
 
         stage('Construir imagen Docker') {
             steps {
- script {
-            docker.withTool('docker') {
-                sh "docker build -t ${DOCKERHUB_USER}/${IMAGE_NAME}:${VERSION} ."
-            }            }
+                script {
+                    docker.withTool('docker') {
+                        sh "docker build -t ${DOCKERHUB_USER}/${IMAGE_NAME}:${VERSION} ."
+                    }
+                }
+            }
         }
 
         stage('Eliminar contenedor anterior si existe') {
             steps {
-                sh """
-                    docker rm -f ${IMAGE_NAME} || true
-                """
+                script {
+                    docker.withTool('docker') {
+                        sh "docker rm -f ${IMAGE_NAME} || true"
+                    }
+                }
             }
         }
 
         stage('Ejecutar contenedor') {
             steps {
-                sh "docker run -dit --name ${IMAGE_NAME} ${DOCKERHUB_USER}/${IMAGE_NAME}:${VERSION}"
+                script {
+                    docker.withTool('docker') {
+                        sh "docker run -dit --name ${IMAGE_NAME} ${DOCKERHUB_USER}/${IMAGE_NAME}:${VERSION}"
+                    }
+                }
             }
         }
 
         stage('Verificar ejecución') {
             steps {
-                sh "docker exec ${IMAGE_NAME} ls /app/index.js"
-                // También podés agregar: docker exec ... node index.js ibanez
+                script {
+                    docker.withTool('docker') {
+                        sh "docker exec ${IMAGE_NAME} ls /app/index.js"
+                    }
+                }
             }
         }
 
         stage('Subir a DockerHub') {
             steps {
-                withCredentials([usernamePassword(credentialsId: 'dockerhub-credentials', usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
-                    sh """
-                        echo "$DOCKER_PASS" | docker login -u "$DOCKER_USER" --password-stdin
-                        docker push ${DOCKERHUB_USER}/${IMAGE_NAME}:${VERSION}
-                    """
+                script {
+                    docker.withTool('docker') {
+                        withCredentials([usernamePassword(credentialsId: 'dockerhub-credentials', usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
+                            sh """
+                                echo "$DOCKER_PASS" | docker login -u "$DOCKER_USER" --password-stdin
+                                docker push ${DOCKERHUB_USER}/${IMAGE_NAME}:${VERSION}
+                            """
+                        }
+                    }
                 }
             }
         }
@@ -58,7 +73,11 @@ pipeline {
     post {
         always {
             echo 'Limpiando entorno...'
-            sh "docker rm -f ${IMAGE_NAME} || true"
+            script {
+                docker.withTool('docker') {
+                    sh "docker rm -f ${IMAGE_NAME} || true"
+                }
+            }
         }
     }
 }
